@@ -9,7 +9,7 @@ import { speak, listVoices } from '@/lib/tts'
 
 type Msg = { role: 'user' | 'assistant' | 'system'; content: string }
 
-// Label bahasa manusiawi
+// Fallback label bahasa jika Intl.DisplayNames tidak tersedia
 const FALLBACK_LABELS: Record<string, string> = {
   'id-ID': 'Bahasa Indonesia',
   'en-US': 'English (United States)',
@@ -28,6 +28,7 @@ const FALLBACK_LABELS: Record<string, string> = {
   'hi-IN': 'हिन्दी (India)',
   'ru-RU': 'Русский (Россия)',
 }
+
 function displayLangLabel(code: string): string {
   try {
     const [langPart, regionPart] = code.split('-')
@@ -63,6 +64,7 @@ export default function Page() {
   const listRef = useRef<HTMLDivElement>(null)
   const keyLocal = 'fabaro-always-chat-v1'
 
+  // Load & persist history
   useEffect(() => {
     const raw = localStorage.getItem(keyLocal)
     if (raw) { try { setMessages(JSON.parse(raw)) } catch {} }
@@ -77,6 +79,7 @@ export default function Page() {
     const handle = () => {
       const voices = listVoices()
       const langs = Array.from(new Set(voices.map(v => v.lang || 'en-US')))
+      // Prioritaskan id-ID, lainnya alfabetis
       langs.sort((a, b) => (a === 'id-ID' ? -1 : b === 'id-ID' ? 1 : a.localeCompare(b)))
       if (langs.length) setLangOptions(langs)
       if (langs.includes('id-ID')) setSelectedLang('id-ID')
@@ -87,11 +90,18 @@ export default function Page() {
     return () => window.speechSynthesis?.removeEventListener('voiceschanged', handle)
   }, [])
 
-  // Register SW (ingat tingkatkan versi sw.js saat rilis)
+  // Register Service Worker (pakai versi query agar update langsung keambil)
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      const ver = 'v6'
-      navigator.serviceWorker.register(`/sw.js?${ver}`).then(reg => reg.update().catch(()=>{})).catch(()=>{})
+      const ver = 'v7' // ⬅️ sinkron dengan CACHE_VERSION di public/sw.js
+      navigator.serviceWorker.register(`/sw.js?${ver}`).then(reg => {
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            window.location.reload()
+          })
+        }
+        reg.update().catch(()=>{})
+      }).catch(()=>{})
     }
   }, [])
 
@@ -110,14 +120,14 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: next.map(({ role, content }) => ({ role, content })),
-          targetLang: selectedLang, // ← kirim target bahasa ke server
+          targetLang: selectedLang, // ← kirim target bahasa ke server (untuk teks)
         }),
       })
       const data = await r.json()
       const reply = (data?.content || '').trim() || 'Maaf, aku sedang kesulitan menjawab. Coba lagi ya.'
       const after = [...next, { role: 'assistant', content: reply } as Msg]
       setMessages(after)
-      if (autoVoice) speak(reply, { lang: selectedLang })
+      if (autoVoice) speak(reply, { lang: selectedLang }) // ← TTS pakai bahasa yang sama
     } catch {
       setMessages([...next, { role: 'assistant', content: 'Terjadi gangguan jaringan. Coba lagi ya.' }])
     } finally {
@@ -156,6 +166,7 @@ export default function Page() {
             <h1 className="text-base font-semibold leading-tight dark:text-white">FABARO ALWAYS</h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">Teman curhat yang empatik & menjaga privasi</p>
           </div>
+          <span className="text-[10px] text-gray-500 mr-2">v7</span>
           <button onClick={toggleTheme} className="text-xs rounded-md border px-2 py-1 dark:text-gray-100">
             {theme === 'light' ? 'Dark' : 'Light'}
           </button>
@@ -204,13 +215,18 @@ export default function Page() {
                 className="border rounded-md px-2 py-1 dark:bg-zinc-800 dark:border-zinc-700"
               >
                 {langOptions.map(code => (
-                  <option key={code} value={code}>{displayLangLabel(code)}</option>
+                  <option key={code} value={code}>
+                    {displayLangLabel(code)}
+                  </option>
                 ))}
               </select>
             </label>
             <button onClick={clearChat} className="px-3 py-1 rounded-lg border dark:border-zinc-700">Clear chat</button>
           </div>
-          <p className="leading-relaxed text-xs">⚠️ <b>Disclaimer:</b> Ini bukan pengganti konselor profesional. Jika kamu dalam kondisi darurat, hubungi layanan darurat setempat.</p>
+          <p className="leading-relaxed text-xs">
+            ⚠️ <b>Disclaimer:</b> Ini bukan pengganti konselor profesional. Jika kamu dalam kondisi darurat,
+            hubungi layanan darurat setempat.
+          </p>
         </div>
       </div>
     </main>
