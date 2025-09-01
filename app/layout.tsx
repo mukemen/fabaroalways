@@ -3,9 +3,24 @@ import type { ReactNode } from 'react'
 
 export const metadata = {
   title: 'FABARO ALWAYS',
-  description: 'AI Teman Curhat — by FABARO GROUP',
+  description: 'teman curhat - By FABARO GROUP',
   manifest: '/manifest.json',
   themeColor: '#0EA5E9',
+
+  // Biar link preview (OG/Twitter) ikut teks yang sama
+  openGraph: {
+    title: 'FABARO ALWAYS',
+    description: 'teman curhat - By FABARO GROUP',
+    siteName: 'FABARO GROUP',
+    type: 'website',
+    images: ['/icon-512.png'], // pastikan file ini ada di /public
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'FABARO ALWAYS',
+    description: 'teman curhat - By FABARO GROUP',
+    images: ['/icon-512.png'],
+  },
 };
 
 import './globals.css'
