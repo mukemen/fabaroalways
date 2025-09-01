@@ -1,9 +1,9 @@
 // public/sw.js
-// PWA caching with network-first for HTML to avoid stale UI
-const CACHE_VERSION = 'v3';                       // ↑ ganti versi saat rilis baru
-const CACHE_STATIC = `fabaro-static-${CACHE_VERSION}`;
+// PWA caching — network-first untuk HTML supaya UI tidak nyangkut versi lama
+const CACHE_VERSION = 'v5';                 // ⬅️ ganti angka/label tiap rilis
+const CACHE_STATIC  = `fabaro-static-${CACHE_VERSION}`;
 
-// Jangan cache '/' supaya HTML selalu fresh
+// Tidak mem-precache '/' supaya HTML selalu fresh
 const STATIC_ASSETS = [
   '/manifest.json',
   '/icon-192.png',
@@ -32,18 +32,18 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
-  // 🔹 Network-first untuk navigasi HTML (hindari layout lama)
+  // 🔹 Network-first untuk navigasi/HTML agar selalu ambil layout terbaru
   const accept = req.headers.get('accept') || '';
   if (req.mode === 'navigate' || accept.includes('text/html')) {
     event.respondWith(
       fetch(req)
         .then((resp) => resp)
-        .catch(() => caches.match(req)) // fallback ke cache jika offline
+        .catch(() => caches.match(req)) // fallback offline
     );
     return;
   }
 
-  // 🔹 Static & API GET: cache-first, lalu isi/memperbarui cache
+  // 🔹 Static & asset lain: cache-first
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
