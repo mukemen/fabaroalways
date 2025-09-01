@@ -1,6 +1,6 @@
 // public/sw.js
 // PWA caching — network-first untuk HTML supaya UI tidak nyangkut versi lama
-const CACHE_VERSION = 'v6';                 // ⬅️ ganti angka/label tiap rilis
+const CACHE_VERSION = 'v7';                 // ⬅️ ganti tiap rilis
 const CACHE_STATIC  = `fabaro-static-${CACHE_VERSION}`;
 
 // Tidak mem-precache '/' supaya HTML selalu fresh
