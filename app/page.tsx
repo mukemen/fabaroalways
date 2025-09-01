@@ -9,7 +9,7 @@ import { speak, listVoices } from '@/lib/tts'
 
 type Msg = { role: 'user' | 'assistant' | 'system'; content: string }
 
-// Fallback label jika Intl.DisplayNames tidak tersedia
+// Fallback label bahasa jika Intl.DisplayNames tidak tersedia
 const FALLBACK_LABELS: Record<string, string> = {
   'id-ID': 'Bahasa Indonesia',
   'en-US': 'English (United States)',
@@ -29,19 +29,15 @@ const FALLBACK_LABELS: Record<string, string> = {
   'ru-RU': 'Русский (Россия)',
 }
 
-// Tampilkan label bahasa manusiawi: "Bahasa Indonesia", "English (United States)", dll.
 function displayLangLabel(code: string): string {
   try {
-    // Expect code like "id-ID" / "en-US"
     const [langPart, regionPart] = code.split('-')
-    // @ts-ignore - older TS dom lib may not have this type fully
-    const langDisplay = new Intl.DisplayNames(['id'], { type: 'language' }).of(langPart)
+    // @ts-ignore (beberapa env TS lama)
+    const lang = new Intl.DisplayNames(['id'], { type: 'language' }).of(langPart)
     // @ts-ignore
-    const regionDisplay = regionPart ? new Intl.DisplayNames(['id'], { type: 'region' }).of(regionPart.toUpperCase()) : ''
-    const langLabel = langDisplay
-      ? langDisplay.charAt(0).toUpperCase() + langDisplay.slice(1)
-      : FALLBACK_LABELS[code] || code
-    return regionDisplay ? `${langLabel} (${regionDisplay})` : langLabel
+    const region = regionPart ? new Intl.DisplayNames(['id'], { type: 'region' }).of(regionPart.toUpperCase()) : ''
+    const langLabel = lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : (FALLBACK_LABELS[code] || code)
+    return region ? `${langLabel} (${region})` : langLabel
   } catch {
     return FALLBACK_LABELS[code] || code
   }
@@ -56,7 +52,7 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [autoVoice, setAutoVoice] = useState(true)
 
-  // Bahasa TTS (label manusiawi, value tetap kode)
+  // Bahasa TTS (label manusiawi, value tetap kode BCP-47)
   const [selectedLang, setSelectedLang] = useState<string>('id-ID')
   const [langOptions, setLangOptions] = useState<string[]>(['id-ID', 'en-US'])
 
@@ -80,12 +76,12 @@ export default function Page() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  // Ambil daftar bahasa dari voices yang tersedia
+  // Kumpulkan daftar bahasa dari voices yang tersedia
   useEffect(() => {
     const handle = () => {
       const voices = listVoices()
       const langs = Array.from(new Set(voices.map(v => v.lang || 'en-US')))
-      // Sort: taruh id-ID di atas, lainnya alfabetis
+      // Prioritaskan id-ID di urutan atas
       langs.sort((a, b) => (a === 'id-ID' ? -1 : b === 'id-ID' ? 1 : a.localeCompare(b)))
       if (langs.length) setLangOptions(langs)
       if (langs.includes('id-ID')) setSelectedLang('id-ID')
@@ -118,7 +114,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: next.map(({ role, content }) => ({ role, content })),
-          // model & temperature tidak dikirim; dibaca dari ENV server
+          // model & temperature tidak dikirim; server baca dari ENV
         }),
       })
       const data = await r.json()
@@ -134,6 +130,18 @@ export default function Page() {
   }, [input, messages, autoVoice, selectedLang])
 
   const onMicText = useCallback((t: string) => setInput(t), [])
+
+  // 🔴 Clear chat: reset state + hapus history di localStorage
+  const clearChat = () => {
+    const init: Msg[] = [{
+      role: 'assistant',
+      content: 'Halo, aku FABARO ALWAYS. Ceritakan apa yang kamu rasakan — aku siap mendengarkan. 🎧',
+    }]
+    if (confirm('Hapus semua riwayat chat ini?')) {
+      setMessages(init)
+      try { localStorage.setItem(keyLocal, JSON.stringify(init)) } catch {}
+    }
+  }
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light'
@@ -207,7 +215,13 @@ export default function Page() {
                 ))}
               </select>
             </label>
+
+            {/* Tombol Clear chat */}
+            <button onClick={clearChat} className="px-3 py-1 rounded-lg border dark:border-zinc-700">
+              Clear chat
+            </button>
           </div>
+
           <p className="leading-relaxed text-xs">
             ⚠️ <b>Disclaimer:</b> Ini bukan pengganti konselor profesional. Jika kamu dalam kondisi darurat,
             hubungi layanan darurat setempat.
