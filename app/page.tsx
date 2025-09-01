@@ -1,19 +1,13 @@
+// app/page.tsx
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import MessageBubble from '@/components/MessageBubble'
 import MicButton from '@/components/MicButton'
 import InstallButton from '@/components/InstallButton'
-import { listVoices, speak } from '@/lib/tts'
+import { speak, listVoices } from '@/lib/tts'
 
 type Msg = { role: 'user' | 'assistant' | 'system'; content: string }
-
-const MODEL_OPTIONS = [
-  'meta-llama/llama-3.1-8b-instruct:free',
-  'meta-llama/llama-3.1-70b-instruct',
-  'openai/gpt-4o-mini',
-  'qwen/qwen-2.5-14b-instruct',
-]
 
 export default function Page() {
   const [input, setInput] = useState('')
@@ -23,19 +17,24 @@ export default function Page() {
   }])
   const [loading, setLoading] = useState(false)
   const [autoVoice, setAutoVoice] = useState(true)
-  const [voiceName, setVoiceName] = useState<string>('')
-  const [rate, setRate] = useState(1)
-  const [pitch, setPitch] = useState(1)
-  const [model, setModel] = useState<string>(MODEL_OPTIONS[0])
-  const [temperature, setTemperature] = useState<number>(0.6)
-  const [theme, setTheme] = useState<'light'|'dark'>(() => (typeof window !== 'undefined' && document.documentElement.classList.contains('dark')) ? 'dark' : 'light')
+
+  // Bahasa TTS (tanpa tulisan “Google …”)
+  const [selectedLang, setSelectedLang] = useState<string>('id-ID')
+  const [langOptions, setLangOptions] = useState<string[]>(['id-ID', 'en-US'])
+
+  // Tema
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    (typeof window !== 'undefined' && document.documentElement.classList.contains('dark')) ? 'dark' : 'light'
+  )
+
   const listRef = useRef<HTMLDivElement>(null)
   const keyLocal = 'fabaro-always-chat-v1'
 
+  // Load & persist history
   useEffect(() => {
     const raw = localStorage.getItem(keyLocal)
     if (raw) {
-      try { setMessages(JSON.parse(raw)) } catch {}
+      try { setMessages(JSON.parse(raw)) } catch { /* ignore */ }
     }
   }, [])
   useEffect(() => {
@@ -43,21 +42,26 @@ export default function Page() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  const voiceOptions = useMemo(() => listVoices(), [])
+  // Ambil daftar bahasa dari voices yang tersedia
   useEffect(() => {
-    const h = () => {
-      const v = listVoices()
-      const id = v.find(x => x.lang?.toLowerCase().startsWith('id')) || v[0]
-      setVoiceName(id?.name || '')
+    const handle = () => {
+      const voices = listVoices()
+      const langs = Array.from(new Set(voices.map(v => v.lang || 'en-US')))
+      // Prioritaskan id-ID dulu
+      langs.sort((a, b) => (a === 'id-ID' ? -1 : b === 'id-ID' ? 1 : a.localeCompare(b)))
+      if (langs.length) setLangOptions(langs)
+      if (langs.includes('id-ID')) setSelectedLang('id-ID')
+      else if (langs[0]) setSelectedLang(langs[0])
     }
-    window.speechSynthesis?.addEventListener('voiceschanged', h)
-    h()
-    return () => window.speechSynthesis?.removeEventListener('voiceschanged', h)
+    window.speechSynthesis?.addEventListener('voiceschanged', handle)
+    handle()
+    return () => window.speechSynthesis?.removeEventListener('voiceschanged', handle)
   }, [])
 
+  // Register service worker (PWA)
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(()=>{})
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
     }
   }, [])
 
@@ -76,45 +80,22 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: next.map(({ role, content }) => ({ role, content })),
-          model,
-          temperature,
+          // model & temperature tidak dikirim; dibaca dari ENV server
         }),
       })
       const data = await r.json()
       const reply = (data?.content || '').trim() || 'Maaf, aku sedang kesulitan menjawab. Coba lagi ya.'
       const after = [...next, { role: 'assistant', content: reply } as Msg]
       setMessages(after)
-      if (autoVoice) speak(reply, { lang: 'id-ID', rate, pitch, voiceName })
+      if (autoVoice) speak(reply, { lang: selectedLang })
     } catch (e) {
       setMessages([...next, { role: 'assistant', content: 'Terjadi gangguan jaringan. Coba lagi ya.' }])
     } finally {
       setLoading(false)
     }
-  }, [input, messages, autoVoice, rate, pitch, voiceName, model, temperature])
+  }, [input, messages, autoVoice, selectedLang])
 
   const onMicText = useCallback((t: string) => setInput(t), [])
-
-  const clearChat = () => {
-    const init: Msg[] = [{
-      role: 'assistant',
-      content: 'Halo, aku FABARO ALWAYS. Ceritakan apa yang kamu rasakan — aku siap mendengarkan. 🎧',
-    }]
-    setMessages(init)
-    localStorage.setItem(keyLocal, JSON.stringify(init))
-  }
-
-  const exportTxt = () => {
-    const lines = messages.map(m => (m.role === 'user' ? 'Kamu: ' : 'FABARO: ') + m.content)
-    const blob = new Blob([lines.join('\n\n')], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'fabaro-always-chat.txt'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-  }
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light'
@@ -126,6 +107,7 @@ export default function Page() {
 
   return (
     <main className="app mx-auto max-w-md min-h-screen flex flex-col bg-gradient-to-b from-white to-gray-50 dark:from-zinc-900 dark:to-zinc-950">
+      {/* Header */}
       <header className="sticky top-0 z-10 backdrop-blur bg-white/80 dark:bg-zinc-900/80 border-b border-gray-200 dark:border-zinc-800">
         <div className="px-4 py-3 flex items-center gap-3">
           <img src="/logo.png" alt="FABARO" className="w-9 h-9 rounded-2xl object-cover" />
@@ -140,6 +122,7 @@ export default function Page() {
         </div>
       </header>
 
+      {/* Messages */}
       <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
         {messages.map((m, i) => (
           <MessageBubble key={i} role={m.role}>{m.content}</MessageBubble>
@@ -147,6 +130,7 @@ export default function Page() {
         {loading && <MessageBubble role="assistant">Mengetik…</MessageBubble>}
       </div>
 
+      {/* Composer */}
       <div className="sticky bottom-0 bg-white dark:bg-zinc-900 border-t border-gray-200 dark:border-zinc-800">
         <div className="p-3 flex items-end gap-2 max-w-md mx-auto">
           <MicButton onText={onMicText} />
@@ -164,34 +148,28 @@ export default function Page() {
           >Kirim</button>
         </div>
 
+        {/* Kontrol sederhana */}
         <div className="px-3 pb-3 text-xs text-gray-700 dark:text-gray-200 space-y-2 max-w-md mx-auto">
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={autoVoice} onChange={(e) => setAutoVoice(e.target.checked)} />
-              Auto‑suara jawaban
+              Auto-suara jawaban
             </label>
-            <select value={voiceName} onChange={(e) => setVoiceName(e.target.value)} className="border rounded-md px-2 py-1 dark:bg-zinc-800 dark:border-zinc-700">
-              {voiceOptions.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
-            </select>
-            <label className="flex items-center gap-1">Rate <input type="range" min={0.8} max={1.3} step={0.05} value={rate} onChange={e=>setRate(parseFloat(e.target.value))}/></label>
-            <label className="flex items-center gap-1">Pitch <input type="range" min={0.7} max={1.3} step={0.05} value={pitch} onChange={e=>setPitch(parseFloat(e.target.value))}/></label>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1">
-              Model:
-              <select value={model} onChange={(e)=>setModel(e.target.value)} className="border rounded-md px-2 py-1 dark:bg-zinc-800 dark:border-zinc-700">
-                {MODEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+              Bahasa:
+              <select
+                value={selectedLang}
+                onChange={(e) => setSelectedLang(e.target.value)}
+                className="border rounded-md px-2 py-1 dark:bg-zinc-800 dark:border-zinc-700"
+              >
+                {langOptions.map(code => <option key={code} value={code}>{code}</option>)}
               </select>
             </label>
-            <label className="flex items-center gap-1">Temperature
-              <input type="range" min={0} max={1} step={0.05} value={temperature} onChange={e => setTemperature(parseFloat(e.target.value))} />
-              <span className="w-8 text-right">{temperature.toFixed(2)}</span>
-            </label>
-            <button onClick={clearChat} className="px-3 py-1 rounded-lg border dark:border-zinc-700">Clear chat</button>
-            <button onClick={exportTxt} className="px-3 py-1 rounded-lg border dark:border-zinc-700">Export .txt</button>
           </div>
-          <p className="leading-relaxed text-xs">⚠️ <b>Disclaimer:</b> Ini bukan pengganti konselor profesional. Jika kamu dalam kondisi darurat, hubungi layanan darurat setempat.</p>
+          <p className="leading-relaxed text-xs">
+            ⚠️ <b>Disclaimer:</b> Ini bukan pengganti konselor profesional. Jika kamu dalam kondisi darurat,
+            hubungi layanan darurat setempat.
+          </p>
         </div>
       </div>
     </main>
