@@ -9,30 +9,29 @@ import { speak, listVoices } from '@/lib/tts'
 
 type Msg = { role: 'user' | 'assistant' | 'system'; content: string }
 
-// Fallback label bahasa jika Intl.DisplayNames tidak tersedia
+// Label bahasa manusiawi
 const FALLBACK_LABELS: Record<string, string> = {
   'id-ID': 'Bahasa Indonesia',
   'en-US': 'English (United States)',
   'en-GB': 'English (United Kingdom)',
   'ms-MY': 'Bahasa Melayu',
+  'fr-FR': 'Français (France)',
+  'de-DE': 'Deutsch (Deutschland)',
+  'es-ES': 'Español (España)',
+  'es-MX': 'Español (México)',
+  'pt-BR': 'Português (Brasil)',
   'ja-JP': '日本語 (Japan)',
   'ko-KR': '한국어 (Korea)',
   'zh-CN': '中文（中国大陆）',
   'zh-TW': '中文（台灣）',
   'ar-SA': 'العربية (Saudi Arabia)',
   'hi-IN': 'हिन्दी (India)',
-  'fr-FR': 'Français (France)',
-  'de-DE': 'Deutsch (Deutschland)',
-  'es-ES': 'Español (España)',
-  'es-MX': 'Español (México)',
-  'pt-BR': 'Português (Brasil)',
   'ru-RU': 'Русский (Россия)',
 }
-
 function displayLangLabel(code: string): string {
   try {
     const [langPart, regionPart] = code.split('-')
-    // @ts-ignore (beberapa env TS lama)
+    // @ts-ignore
     const lang = new Intl.DisplayNames(['id'], { type: 'language' }).of(langPart)
     // @ts-ignore
     const region = regionPart ? new Intl.DisplayNames(['id'], { type: 'region' }).of(regionPart.toUpperCase()) : ''
@@ -52,7 +51,7 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [autoVoice, setAutoVoice] = useState(true)
 
-  // Bahasa TTS (label manusiawi, value tetap kode BCP-47)
+  // Bahasa teks & suara jawaban
   const [selectedLang, setSelectedLang] = useState<string>('id-ID')
   const [langOptions, setLangOptions] = useState<string[]>(['id-ID', 'en-US'])
 
@@ -64,24 +63,20 @@ export default function Page() {
   const listRef = useRef<HTMLDivElement>(null)
   const keyLocal = 'fabaro-always-chat-v1'
 
-  // Load & persist history
   useEffect(() => {
     const raw = localStorage.getItem(keyLocal)
-    if (raw) {
-      try { setMessages(JSON.parse(raw)) } catch { /* ignore */ }
-    }
+    if (raw) { try { setMessages(JSON.parse(raw)) } catch {} }
   }, [])
   useEffect(() => {
     localStorage.setItem(keyLocal, JSON.stringify(messages))
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  // Kumpulkan daftar bahasa dari voices yang tersedia
+  // Ambil daftar bahasa dari voices
   useEffect(() => {
     const handle = () => {
       const voices = listVoices()
       const langs = Array.from(new Set(voices.map(v => v.lang || 'en-US')))
-      // Prioritaskan id-ID di urutan atas
       langs.sort((a, b) => (a === 'id-ID' ? -1 : b === 'id-ID' ? 1 : a.localeCompare(b)))
       if (langs.length) setLangOptions(langs)
       if (langs.includes('id-ID')) setSelectedLang('id-ID')
@@ -92,10 +87,11 @@ export default function Page() {
     return () => window.speechSynthesis?.removeEventListener('voiceschanged', handle)
   }, [])
 
-  // Register service worker (PWA)
+  // Register SW (ingat tingkatkan versi sw.js saat rilis)
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {})
+      const ver = 'v5'
+      navigator.serviceWorker.register(`/sw.js?${ver}`).then(reg => reg.update().catch(()=>{})).catch(()=>{})
     }
   }, [])
 
@@ -114,7 +110,7 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: next.map(({ role, content }) => ({ role, content })),
-          // model & temperature tidak dikirim; server baca dari ENV
+          targetLang: selectedLang, // ← kirim target bahasa ke server
         }),
       })
       const data = await r.json()
@@ -122,7 +118,7 @@ export default function Page() {
       const after = [...next, { role: 'assistant', content: reply } as Msg]
       setMessages(after)
       if (autoVoice) speak(reply, { lang: selectedLang })
-    } catch (e) {
+    } catch {
       setMessages([...next, { role: 'assistant', content: 'Terjadi gangguan jaringan. Coba lagi ya.' }])
     } finally {
       setLoading(false)
@@ -131,7 +127,6 @@ export default function Page() {
 
   const onMicText = useCallback((t: string) => setInput(t), [])
 
-  // 🔴 Clear chat: reset state + hapus history di localStorage
   const clearChat = () => {
     const init: Msg[] = [{
       role: 'assistant',
@@ -202,30 +197,20 @@ export default function Page() {
               Auto-suara jawaban
             </label>
             <label className="flex items-center gap-1">
-              Bahasa:
+              Bahasa jawaban:
               <select
                 value={selectedLang}
                 onChange={(e) => setSelectedLang(e.target.value)}
                 className="border rounded-md px-2 py-1 dark:bg-zinc-800 dark:border-zinc-700"
               >
                 {langOptions.map(code => (
-                  <option key={code} value={code}>
-                    {displayLangLabel(code)}
-                  </option>
+                  <option key={code} value={code}>{displayLangLabel(code)}</option>
                 ))}
               </select>
             </label>
-
-            {/* Tombol Clear chat */}
-            <button onClick={clearChat} className="px-3 py-1 rounded-lg border dark:border-zinc-700">
-              Clear chat
-            </button>
+            <button onClick={clearChat} className="px-3 py-1 rounded-lg border dark:border-zinc-700">Clear chat</button>
           </div>
-
-          <p className="leading-relaxed text-xs">
-            ⚠️ <b>Disclaimer:</b> Ini bukan pengganti konselor profesional. Jika kamu dalam kondisi darurat,
-            hubungi layanan darurat setempat.
-          </p>
+          <p className="leading-relaxed text-xs">⚠️ <b>Disclaimer:</b> Ini bukan pengganti konselor profesional. Jika kamu dalam kondisi darurat, hubungi layanan darurat setempat.</p>
         </div>
       </div>
     </main>
