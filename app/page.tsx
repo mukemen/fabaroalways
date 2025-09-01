@@ -90,7 +90,7 @@ export default function Page() {
   // Register SW (ingat tingkatkan versi sw.js saat rilis)
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      const ver = 'v5'
+      const ver = 'v6'
       navigator.serviceWorker.register(`/sw.js?${ver}`).then(reg => reg.update().catch(()=>{})).catch(()=>{})
     }
   }, [])
