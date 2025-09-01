@@ -1,3 +1,4 @@
+// app/api/chat/route.ts
 import { NextRequest } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -8,9 +9,17 @@ export async function POST(req: NextRequest) {
     const messages = body?.messages || []
     const modelFromClient = body?.model
     const temperatureFromClient = typeof body?.temperature === 'number' ? body.temperature : undefined
+    const targetLang: string = (body?.targetLang || 'id-ID') as string // ← kode BCP-47 dari client (mis. "en-US")
 
-    const model = modelFromClient || process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-8b-instruct:free'
+    const model = modelFromClient || process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
     const temperature = temperatureFromClient ?? 0.6
+
+    const systemPrompt =
+      `Kamu adalah FABARO ALWAYS, teman curhat yang empatik, suportif, dan menjaga privasi. ` +
+      `Selalu balas dalam bahasa yang sesuai dengan kode locale BCP-47 berikut: ${targetLang}. ` +
+      `Gunakan bahasa dan gaya alami setempat, singkat, jelas, hangat. ` +
+      `Jika ada tanda krisis (bahaya diri/Orang lain), sarankan menghubungi layanan darurat setempat. ` +
+      `Jangan memberi diagnosis atau nasihat medis profesional.`
 
     const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -23,11 +32,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model,
         messages: [
-          {
-            role: 'system',
-            content:
-              'Kamu adalah FABARO ALWAYS, teman curhat yang empatik, suportif, dan menjaga privasi. Beri jawaban singkat, jelas, membantu, dan gunakan bahasa Indonesia yang hangat. Jika ada tanda krisis (bahaya diri/Orang lain), sarankan menghubungi layanan darurat setempat. Jangan memberi nasihat medis/diagnosis.',
-          },
+          { role: 'system', content: systemPrompt },
           ...messages,
         ],
         temperature,
