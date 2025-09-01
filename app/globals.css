@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+.app { padding-bottom: env(safe-area-inset-bottom); }
+* { scrollbar-width: thin; }
