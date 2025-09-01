@@ -9,6 +9,44 @@ import { speak, listVoices } from '@/lib/tts'
 
 type Msg = { role: 'user' | 'assistant' | 'system'; content: string }
 
+// Fallback label jika Intl.DisplayNames tidak tersedia
+const FALLBACK_LABELS: Record<string, string> = {
+  'id-ID': 'Bahasa Indonesia',
+  'en-US': 'English (United States)',
+  'en-GB': 'English (United Kingdom)',
+  'ms-MY': 'Bahasa Melayu',
+  'ja-JP': '日本語 (Japan)',
+  'ko-KR': '한국어 (Korea)',
+  'zh-CN': '中文（中国大陆）',
+  'zh-TW': '中文（台灣）',
+  'ar-SA': 'العربية (Saudi Arabia)',
+  'hi-IN': 'हिन्दी (India)',
+  'fr-FR': 'Français (France)',
+  'de-DE': 'Deutsch (Deutschland)',
+  'es-ES': 'Español (España)',
+  'es-MX': 'Español (México)',
+  'pt-BR': 'Português (Brasil)',
+  'ru-RU': 'Русский (Россия)',
+}
+
+// Tampilkan label bahasa manusiawi: "Bahasa Indonesia", "English (United States)", dll.
+function displayLangLabel(code: string): string {
+  try {
+    // Expect code like "id-ID" / "en-US"
+    const [langPart, regionPart] = code.split('-')
+    // @ts-ignore - older TS dom lib may not have this type fully
+    const langDisplay = new Intl.DisplayNames(['id'], { type: 'language' }).of(langPart)
+    // @ts-ignore
+    const regionDisplay = regionPart ? new Intl.DisplayNames(['id'], { type: 'region' }).of(regionPart.toUpperCase()) : ''
+    const langLabel = langDisplay
+      ? langDisplay.charAt(0).toUpperCase() + langDisplay.slice(1)
+      : FALLBACK_LABELS[code] || code
+    return regionDisplay ? `${langLabel} (${regionDisplay})` : langLabel
+  } catch {
+    return FALLBACK_LABELS[code] || code
+  }
+}
+
 export default function Page() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Msg[]>([{
@@ -18,7 +56,7 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [autoVoice, setAutoVoice] = useState(true)
 
-  // Bahasa TTS (tanpa tulisan “Google …”)
+  // Bahasa TTS (label manusiawi, value tetap kode)
   const [selectedLang, setSelectedLang] = useState<string>('id-ID')
   const [langOptions, setLangOptions] = useState<string[]>(['id-ID', 'en-US'])
 
@@ -47,7 +85,7 @@ export default function Page() {
     const handle = () => {
       const voices = listVoices()
       const langs = Array.from(new Set(voices.map(v => v.lang || 'en-US')))
-      // Prioritaskan id-ID dulu
+      // Sort: taruh id-ID di atas, lainnya alfabetis
       langs.sort((a, b) => (a === 'id-ID' ? -1 : b === 'id-ID' ? 1 : a.localeCompare(b)))
       if (langs.length) setLangOptions(langs)
       if (langs.includes('id-ID')) setSelectedLang('id-ID')
@@ -162,7 +200,11 @@ export default function Page() {
                 onChange={(e) => setSelectedLang(e.target.value)}
                 className="border rounded-md px-2 py-1 dark:bg-zinc-800 dark:border-zinc-700"
               >
-                {langOptions.map(code => <option key={code} value={code}>{code}</option>)}
+                {langOptions.map(code => (
+                  <option key={code} value={code}>
+                    {displayLangLabel(code)}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
